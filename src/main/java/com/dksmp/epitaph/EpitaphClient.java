@@ -1,5 +1,6 @@
 package com.dksmp.epitaph;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -16,6 +17,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -25,9 +27,13 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Random;
 import java.util.Set;
 
 public class EpitaphClient implements ClientModInitializer {
+
+    private static final Identifier EFFECT_TEXTURE =
+            Identifier.of("epitaph", "textures/gui/epitaph_effect.png");
 
     private static KeyBinding toggleKey;
 
@@ -63,7 +69,8 @@ public class EpitaphClient implements ClientModInitializer {
             EpitaphState.active = false;
             EpitaphState.queue.clear();
             EpitaphState.trails.clear();
-            EpitaphState.overlay = 0f;
+            EpitaphState.fade = 0f;
+            EpitaphState.flashTick = -1;
             return;
         }
 
@@ -82,15 +89,23 @@ public class EpitaphClient implements ClientModInitializer {
             } else if (EpitaphState.ticks % EpitaphState.TRAIL_STEP == 0) {
                 updateTrails(client);
             }
-            EpitaphState.overlay = Math.min(1f, EpitaphState.overlay + 0.12f);
+            EpitaphState.fade = Math.min(1f, EpitaphState.fade + 0.12f);
         } else {
-            EpitaphState.overlay = Math.max(0f, EpitaphState.overlay - 0.12f);
+            EpitaphState.fade = Math.max(0f, EpitaphState.fade - 0.12f);
+        }
+
+        if (EpitaphState.flashTick >= 0) {
+            EpitaphState.flashTick++;
+            if (EpitaphState.flashTick >= EpitaphState.FLASH_TICKS) {
+                EpitaphState.flashTick = -1;
+            }
         }
     }
 
     private static void start(MinecraftClient client) {
         EpitaphState.active = true;
         EpitaphState.ticks = 0;
+        EpitaphState.flashTick = 0;
         EpitaphState.queue.clear();
         EpitaphState.trails.clear();
         EpitaphState.startPos = client.player.getPos();
@@ -102,6 +117,7 @@ public class EpitaphClient implements ClientModInitializer {
     private static void stop(MinecraftClient client) {
         // Сначала выключаем Blink, потом отправляем всё накопленное по порядку
         EpitaphState.active = false;
+        EpitaphState.flashTick = 0;
         ClientPlayNetworkHandler handler = client.getNetworkHandler();
         if (handler != null) {
             for (Packet<?> packet : EpitaphState.queue) {
@@ -144,59 +160,117 @@ public class EpitaphClient implements ClientModInitializer {
         int w = ctx.getScaledWindowWidth();
         int h = ctx.getScaledWindowHeight();
 
-        // 1) Чёрное затемнение
-        if (EpitaphState.overlay > 0f) {
-            int a = (int) (EpitaphState.overlay * EpitaphState.DARKNESS * 255f);
-            ctx.fill(0, 0, w, h, a << 24);
+        // 1) Лёгкий глитч по краям экрана (и затемнение, если включено в настройках)
+        if (EpitaphState.fade > 0f) {
+            if (EpitaphState.DARKNESS > 0f) {
+                int a = (int) (EpitaphState.fade * EpitaphState.DARKNESS * 255f);
+                ctx.fill(0, 0, w, h, a << 24);
+            }
+            drawEdgeGlitch(ctx, w, h);
         }
 
         // 2) Красные силуэты (афтерименджи)
         if (EpitaphState.active) {
-            // Где тебя видит сервер (твой "призрак")
-            drawGhost(ctx, new EpitaphState.Ghost(EpitaphState.startPos, 0.6f, 1.8f), 0.85f, w, h);
+            drawGhost(ctx, new EpitaphState.Ghost(EpitaphState.startPos, 0.6f, 1.8f), 1f, w, h);
 
             for (Deque<EpitaphState.Ghost> trail : EpitaphState.trails.values()) {
-                // Рисуем от старых к новым, чтобы свежий был сверху
+                // Рисуем от старых к новым. Самую свежую позицию (index 0) пропускаем,
+                // чтобы красный след был именно "позади" настоящего моба.
                 Iterator<EpitaphState.Ghost> it = trail.descendingIterator();
-                int total = trail.size();
-                int index = total - 1;
+                int index = trail.size() - 1;
                 while (it.hasNext()) {
                     EpitaphState.Ghost g = it.next();
-                    float alpha = 0.85f * (1f - index / (float) EpitaphState.TRAIL_LENGTH);
-                    drawGhost(ctx, g, alpha, w, h);
+                    if (index >= 1) {
+                        float fade = 1f - (index - 1) / (float) EpitaphState.TRAIL_LENGTH;
+                        drawGhost(ctx, g, fade, w, h);
+                    }
                     index--;
                 }
             }
         }
 
-        // 3) Пиксельная вспышка (как фон на твоём 3-м варианте)
-        if (EpitaphState.active && EpitaphState.ticks < EpitaphState.FLASH_TICKS) {
-            drawFlash(ctx, w, h, EpitaphState.ticks / (float) EpitaphState.FLASH_TICKS);
+        // 3) Картинка-эффект (космос и розовые полосы) при включении и при телепорте
+        if (EpitaphState.flashTick >= 0) {
+            drawEffectImage(ctx, w, h, EpitaphState.flashTick / (float) EpitaphState.FLASH_TICKS);
         }
     }
 
-    /** Красный силуэт: голова + тело. */
-    private static void drawGhost(DrawContext ctx, EpitaphState.Ghost g, float alpha, int w, int h) {
+    /** Слабый глитч по краям: розовая подсветка и короткие мерцающие полоски. */
+    private static void drawEdgeGlitch(DrawContext ctx, int w, int h) {
+        float strength = EpitaphState.fade;
+
+        if (EpitaphState.EDGE_TINT > 0f) {
+            int strips = 8;
+            int stripW = Math.max(2, w / 80);
+            for (int i = 0; i < strips; i++) {
+                float k = 1f - i / (float) strips;
+                int a = (int) (EpitaphState.EDGE_TINT * k * strength * 255f);
+                int c = (a << 24) | 0xE0207A;
+                ctx.fill(i * stripW, 0, (i + 1) * stripW, h, c);
+                ctx.fill(w - (i + 1) * stripW, 0, w - i * stripW, h, c);
+            }
+        }
+
+        // Полоски меняются примерно 15 раз в секунду
+        Random rnd = new Random((System.nanoTime() / 65_000_000L) * 7919L + EpitaphState.ticks);
+        int[] palette = {0xFF2A6A, 0xFF9AF0, 0x40E0FF, 0xE01030};
+        for (int i = 0; i < EpitaphState.GLITCH_BARS; i++) {
+            boolean left = rnd.nextBoolean();
+            int barH = 1 + rnd.nextInt(3);
+            int barW = 6 + rnd.nextInt(Math.max(1, w / 12));
+            int y = rnd.nextInt(Math.max(1, h));
+            int x = left ? 0 : w - barW;
+            int a = (int) ((0.25f + rnd.nextFloat() * 0.30f) * strength * 255f);
+            ctx.fill(x, y, x + barW, y + barH, (a << 24) | palette[rnd.nextInt(palette.length)]);
+        }
+    }
+
+    /** Красный силуэт-афтеримидж: контур + лёгкая заливка. Людей рисуем как фигуру, остальных как коробку. */
+    private static void drawGhost(DrawContext ctx, EpitaphState.Ghost g, float fade, int w, int h) {
         float[] feet = project(g.pos(), w, h);
         float[] head = project(g.pos().add(0, g.height(), 0), w, h);
         if (feet == null || head == null) return;
 
         float height = feet[1] - head[1];
-        if (height < 3f) return;
-        float width = Math.max(3f, height * (g.width() / g.height()));
+        if (height < 6f) return;
 
-        int a = (int) (Math.max(0f, Math.min(1f, alpha)) * 255f);
-        int color = (a << 24) | 0xE01030;
+        float f = Math.max(0f, Math.min(1f, fade));
+        int fill = ((int) (f * EpitaphState.GHOST_FILL * 255f) << 24) | 0xE01030;
+        int line = ((int) (f * EpitaphState.GHOST_LINE * 255f) << 24) | 0xFF2850;
 
-        int x1 = Math.round(feet[0] - width / 2f);
-        int x2 = Math.round(feet[0] + width / 2f);
-        int yTop = Math.round(head[1]);
-        int yBot = Math.round(feet[1]);
-        int headH = Math.max(2, Math.round(height * 0.22f));
-        int pad = Math.round(width * 0.2f);
+        float cx = feet[0];
+        float top = head[1];
 
-        ctx.fill(x1 + pad, yTop, x2 - pad, yTop + headH, color); // голова
-        ctx.fill(x1, yTop + headH, x2, yBot, color);             // тело
+        if (g.height() / g.width() >= 2.4f) {
+            // Фигура как у игрока/зомби/скелета (пропорции модели 8-4-12 пикселей)
+            float u = height / 32f;
+            part(ctx, cx, top, -4, 0, 4, 8, u, fill, line);     // голова
+            part(ctx, cx, top, -4, 8, 4, 20, u, fill, line);    // тело
+            part(ctx, cx, top, -8, 8, -4, 20, u, fill, line);   // левая рука
+            part(ctx, cx, top, 4, 8, 8, 20, u, fill, line);     // правая рука
+            part(ctx, cx, top, -4, 20, 0, 32, u, fill, line);   // левая нога
+            part(ctx, cx, top, 0, 20, 4, 32, u, fill, line);    // правая нога
+        } else {
+            float halfW = Math.max(4f, height * (g.width() / g.height()) / 2f);
+            box(ctx, Math.round(cx - halfW), Math.round(top),
+                    Math.round(cx + halfW), Math.round(feet[1]), fill, line);
+        }
+    }
+
+    private static void part(DrawContext ctx, float cx, float top,
+                             float x1, float y1, float x2, float y2, float u, int fill, int line) {
+        box(ctx, Math.round(cx + x1 * u), Math.round(top + y1 * u),
+                Math.round(cx + x2 * u), Math.round(top + y2 * u), fill, line);
+    }
+
+    /** Прямоугольник с тонким контуром. */
+    private static void box(DrawContext ctx, int x1, int y1, int x2, int y2, int fill, int line) {
+        if (x2 - x1 < 3 || y2 - y1 < 3) return;
+        ctx.fill(x1, y1, x2, y2, fill);
+        ctx.fill(x1, y1, x2, y1 + 1, line);
+        ctx.fill(x1, y2 - 1, x2, y2, line);
+        ctx.fill(x1, y1 + 1, x1 + 1, y2 - 1, line);
+        ctx.fill(x2 - 1, y1 + 1, x2, y2 - 1, line);
     }
 
     /** Точка в мире -> координаты на экране (или null, если за спиной). */
@@ -214,35 +288,20 @@ public class EpitaphClient implements ClientModInitializer {
         return new float[]{(nx * 0.5f + 0.5f) * w, (1f - (ny * 0.5f + 0.5f)) * h};
     }
 
-    /** Пиксельный розово-фиолетовый круг, который расширяется от центра и гаснет. */
-    private static void drawFlash(DrawContext ctx, int w, int h, float t) {
-        float maxR = (float) Math.hypot(w, h) / 2f;
-        float r = maxR * Math.min(1f, t * 1.6f);
-        float alpha = t < 0.5f ? 0.95f : 0.95f * (1f - (t - 0.5f) * 2f);
+    /** Картинка-эффект на весь экран: быстро появляется, потом плавно гаснет. */
+    private static void drawEffectImage(DrawContext ctx, int w, int h, float t) {
+        float alpha = t < 0.2f ? t / 0.2f : 1f - (t - 0.2f) / 0.8f;
+        alpha = Math.max(0f, Math.min(1f, alpha)) * EpitaphState.FLASH_ALPHA;
         if (alpha <= 0f) return;
-        int a = (int) (alpha * 255f);
 
-        int cell = Math.max(8, w / 48);
-        int cx = w / 2;
-        int cy = h / 2;
-        int n = (int) (r / cell) + 1;
+        // Лёгкая тряска по горизонтали для динамики
+        int shake = (int) (Math.sin(EpitaphState.flashTick * 2.3f) * 10f);
 
-        for (int gy = -n; gy <= n; gy++) {
-            for (int gx = -n; gx <= n; gx++) {
-                float d = (float) Math.sqrt(gx * gx + gy * gy) * cell;
-                if (d > r) continue;
-
-                float k = Math.min(1f, d / maxR);
-                float band = (float) Math.floor(k * 6f) / 6f; // ступеньки = пиксельный вид
-                int red = (int) (255 - (255 - 35) * band);
-                int green = (int) (90 - 90 * band);
-                int blue = (int) (225 - (225 - 40) * band);
-                int color = (a << 24) | (red << 16) | (green << 8) | blue;
-
-                int x1 = cx + gx * cell - cell / 2;
-                int y1 = cy + gy * cell - cell / 2;
-                ctx.fill(x1, y1, x1 + cell, y1 + cell, color);
-            }
-        }
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
+        ctx.drawTexture(EFFECT_TEXTURE, -20 + shake, 0, w + 40, h, 0f, 0f, 512, 288, 512, 288);
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        RenderSystem.disableBlend();
     }
 }
