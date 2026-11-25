@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "epitaph",
+  "version": "${version}",
+  "name": "Epitaph (King Crimson)",
+  "description": "King Crimson style Epitaph effect: black world, red afterimages and a Blink-style teleport.",
+  "authors": ["DK"],
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.dksmp.epitaph.EpitaphClient"]
+  },
+  "mixins": ["epitaph.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.11",
+    "minecraft": "~1.21",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
