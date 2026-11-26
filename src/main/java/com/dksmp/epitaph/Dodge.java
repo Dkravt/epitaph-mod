@@ -40,8 +40,7 @@ public final class Dodge {
         EpitaphState.dodgeTicksLeft = EpitaphConfig.dodgeDurationSeconds * 20;
         EpitaphState.dodgeCharges = EpitaphConfig.dodgeCount;
         EpitaphState.dodgeCooldown = 0;
-        client.getSoundManager().play(
-                PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.7f));
+        EpitaphSounds.play(client, EpitaphSounds.DODGE);
     }
 
     public static void disarm() {
@@ -89,8 +88,7 @@ public final class Dodge {
         EpitaphState.dodgeCharges--;
         EpitaphState.dodgeCooldown = EpitaphState.DODGE_COOLDOWN;
         EpitaphState.startFlash();
-        client.getSoundManager().play(
-                PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.3f));
+        EpitaphSounds.play(client, EpitaphSounds.DODGE);
         if (EpitaphState.dodgeCharges <= 0) {
             disarm();
         }

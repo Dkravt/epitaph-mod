@@ -159,8 +159,19 @@ public class EpitaphClient implements ClientModInitializer {
         double dy = look.y;
         double dz = look.z;
 
-        // Ищем самую дальнюю свободную точку на пути (шаг 0.5 блока)
         Box box = player.getBoundingBox();
+
+        // Смотришь вниз, а под ногами земля: летим вдоль земли, а не в неё
+        // (раньше из-за этого рывок почти никогда не срабатывал)
+        if (dy < 0 && !client.world.isSpaceEmpty(player, box.offset(dx * 0.5, dy * 0.5, dz * 0.5))) {
+            double flat = Math.sqrt(dx * dx + dz * dz);
+            if (flat < 1.0E-4) return; // смотришь строго вниз
+            dx /= flat;
+            dz /= flat;
+            dy = 0.0;
+        }
+
+        // Ищем самую дальнюю свободную точку на пути (шаг 0.5 блока)
         double free = 0.0;
         for (double d = 0.5; d <= EpitaphConfig.teleportDistance + 1e-6; d += 0.5) {
             if (client.world.isSpaceEmpty(player, box.offset(dx * d, dy * d, dz * d))) {

@@ -2,6 +2,9 @@
   "epitaph": {
     "sounds": ["epitaph:epitaph"]
   },
+  "dodge": {
+    "sounds": ["epitaph:dodge"]
+  },
   "dash": {
     "sounds": ["epitaph:dash"]
   }

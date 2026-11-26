@@ -8,8 +8,10 @@ import net.minecraft.util.Identifier;
 /** Свои звуки мода (файлы лежат в assets/epitaph/sounds, описаны в sounds.json). */
 public final class EpitaphSounds {
 
-    /** Эпитафия: старт и конец (dolphin-crimson). */
+    /** Эпитафия (Blink): старт и конец (kingcrimson). */
     public static final SoundEvent EPITAPH = SoundEvent.of(Identifier.of("epitaph", "epitaph"));
+    /** Уворот: включение и срабатывание (dolphin-crimson). */
+    public static final SoundEvent DODGE = SoundEvent.of(Identifier.of("epitaph", "dodge"));
     /** Рывок (timeskip). */
     public static final SoundEvent DASH = SoundEvent.of(Identifier.of("epitaph", "dash"));
 
