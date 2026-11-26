@@ -8,12 +8,15 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.network.packet.Packet;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Box;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.Random;
@@ -27,6 +30,8 @@ public class EpitaphClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        EpitaphConfig.load();
+
         // Кнопка по умолчанию: V (меняется в настройках управления, категория King Crimson)
         toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.epitaph.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_V, "category.epitaph"));
@@ -47,17 +52,23 @@ public class EpitaphClient implements ClientModInitializer {
             return;
         }
 
+        if (EpitaphState.teleportCooldown > 0) {
+            EpitaphState.teleportCooldown--;
+        }
+
         while (toggleKey.wasPressed()) {
-            if (EpitaphState.active) {
-                stop(client);
+            if (isShiftDown(client)) {
+                dash(client);          // Shift + V: рывок
+            } else if (EpitaphState.active) {
+                stop(client);          // V: телепорт обратно (конец Эпитафии)
             } else {
-                start(client);
+                start(client);         // V: старт Эпитафии
             }
         }
 
         if (EpitaphState.active) {
             EpitaphState.ticks++;
-            if (EpitaphState.ticks >= EpitaphState.MAX_TICKS) {
+            if (EpitaphState.ticks >= EpitaphConfig.durationSeconds * 20) {
                 stop(client); // время вышло: автоматический телепорт
             }
             EpitaphState.fade = Math.min(1f, EpitaphState.fade + 0.12f);
@@ -95,6 +106,61 @@ public class EpitaphClient implements ClientModInitializer {
         EpitaphState.queue.clear();
         client.getSoundManager().play(
                 PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.2f));
+    }
+
+    private static boolean isShiftDown(MinecraftClient client) {
+        long window = client.getWindow().getHandle();
+        return InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_LEFT_SHIFT)
+                || InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+    }
+
+    /**
+     * Рывок: мгновенно переносит тебя вперёд (по направлению взгляда, по горизонтали)
+     * на заданную дальность. Если впереди стена, останавливается перед ней.
+     * Сервер получает несколько коротких шагов, а не один большой прыжок, поэтому не откатывает.
+     */
+    private static void dash(MinecraftClient client) {
+        ClientPlayerEntity player = client.player;
+        if (player == null || client.world == null) return;
+        if (EpitaphState.teleportCooldown > 0) return;
+
+        double rad = Math.toRadians(player.getYaw());
+        double dx = -Math.sin(rad);
+        double dz = Math.cos(rad);
+
+        // Ищем самую дальнюю свободную точку на пути (шаг 0.5 блока)
+        Box box = player.getBoundingBox();
+        double free = 0.0;
+        for (double d = 0.5; d <= EpitaphConfig.teleportDistance + 1e-6; d += 0.5) {
+            if (client.world.isSpaceEmpty(player, box.offset(dx * d, 0.0, dz * d))) {
+                free = d;
+            } else {
+                break;
+            }
+        }
+        if (free < 1.0) return; // впереди стена вплотную
+
+        double sx = player.getX();
+        double sy = player.getY();
+        double sz = player.getZ();
+
+        // Сообщаем серверу маршрут короткими шагами (не больше 4 блоков за шаг)
+        ClientPlayNetworkHandler handler = client.getNetworkHandler();
+        int steps = (int) Math.ceil(free / 4.0);
+        if (handler != null) {
+            for (int i = 1; i <= steps; i++) {
+                double d = free * i / steps;
+                handler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                        sx + dx * d, sy, sz + dz * d, player.isOnGround()));
+            }
+        }
+        player.setPosition(sx + dx * free, sy, sz + dz * free);
+
+        // Тот же эффект-картинка, но без глитча по краям (глитч только во время Эпитафии)
+        EpitaphState.flashTick = 0;
+        EpitaphState.teleportCooldown = EpitaphState.TELEPORT_COOLDOWN;
+        client.getSoundManager().play(
+                PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.0f));
     }
 
     // ===================== ОТРИСОВКА =====================

@@ -3,12 +3,14 @@
   "id": "epitaph",
   "version": "${version}",
   "name": "Epitaph (King Crimson)",
-  "description": "King Crimson style Epitaph effect: black world, red afterimages and a Blink-style teleport.",
+  "description": "King Crimson style Epitaph: Blink-style teleport, red outlines through walls, and a dash on Shift+V.",
   "authors": ["DK"],
   "license": "All-Rights-Reserved",
+  "icon": "assets/epitaph/icon.png",
   "environment": "client",
   "entrypoints": {
-    "client": ["com.dksmp.epitaph.EpitaphClient"]
+    "client": ["com.dksmp.epitaph.EpitaphClient"],
+    "modmenu": ["com.dksmp.epitaph.EpitaphModMenu"]
   },
   "mixins": ["epitaph.mixins.json"],
   "depends": {
@@ -16,5 +18,8 @@
     "minecraft": "~1.21",
     "java": ">=21",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
   }
 }

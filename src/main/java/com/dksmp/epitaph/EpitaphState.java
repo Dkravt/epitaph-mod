@@ -12,10 +12,9 @@ import java.util.List;
 public final class EpitaphState {
 
     // ================= НАСТРОЙКИ (меняй тут) =================
-    /** Максимальная длительность Epitaph в тиках (20 тиков = 1 секунда). */
-    public static final int MAX_TICKS = 120;
-    /** В каком радиусе (в блоках) у игроков и мобов появляется красная обводка. */
-    public static final double RADIUS = 32.0;
+    // Дальность рывка, длительность Эпитафии и радиус обводки меняются в Mod Menu (см. EpitaphConfig)
+    /** Пауза между рывками (тики, 20 = 1 секунда). */
+    public static final int TELEPORT_COOLDOWN = 10;
     /** Цвет обводки (RGB). */
     public static final int OUTLINE_COLOR = 0xFF2850;
     /** Длительность картинки-эффекта при включении и при телепорте (тики). */
@@ -32,6 +31,8 @@ public final class EpitaphState {
 
     public static boolean active = false;
     public static int ticks = 0;
+    /** Сколько тиков осталось до следующего рывка. */
+    public static int teleportCooldown = 0;
     /** Плавное появление эффектов по краям 0..1. */
     public static float fade = 0f;
     /** Тик картинки-эффекта: -1 = не показываем. */
@@ -45,7 +46,8 @@ public final class EpitaphState {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || entity == client.player) return false;
         if (!(entity instanceof LivingEntity) || entity instanceof ArmorStandEntity) return false;
-        return entity.squaredDistanceTo(client.player) <= RADIUS * RADIUS;
+        double r = EpitaphConfig.outlineRadius;
+        return entity.squaredDistanceTo(client.player) <= r * r;
     }
 
     private EpitaphState() {}
