@@ -88,7 +88,7 @@ public final class Dodge {
     private static void onDodged(MinecraftClient client) {
         EpitaphState.dodgeCharges--;
         EpitaphState.dodgeCooldown = EpitaphState.DODGE_COOLDOWN;
-        EpitaphState.flashTick = 0;
+        EpitaphState.startFlash();
         client.getSoundManager().play(
                 PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.3f));
         if (EpitaphState.dodgeCharges <= 0) {

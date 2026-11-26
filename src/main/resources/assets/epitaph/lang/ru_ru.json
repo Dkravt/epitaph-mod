@@ -1,5 +1,6 @@
 {
-  "key.epitaph.toggle": "Эпитафия (V) / Рывок (Shift+V)",
+  "key.epitaph.toggle": "Эпитафия (старт / телепорт обратно)",
+  "key.epitaph.dash": "Рывок (туда, куда смотришь)",
   "key.epitaph.dodge": "Уворот (вкл / выкл)",
   "category.epitaph": "King Crimson"
 }

@@ -1,0 +1,8 @@
+{
+  "epitaph": {
+    "sounds": ["epitaph:epitaph"]
+  },
+  "dash": {
+    "sounds": ["epitaph:dash"]
+  }
+}

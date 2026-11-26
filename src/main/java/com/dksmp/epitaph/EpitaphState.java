@@ -24,8 +24,8 @@ public final class EpitaphState {
     public static final int DODGE_COLOR = 0xFF5CE0;
     /** Длительность картинки-эффекта при включении и при телепорте (тики). */
     public static final int FLASH_TICKS = 16;
-    /** Максимальная яркость картинки-эффекта (0..1). */
-    public static final float FLASH_ALPHA = 0.95f;
+    /** Прозрачность картинки с космосом (0 = невидна, 1 = полностью). Анимация поверх неё не зависит от этого. */
+    public static final float FLASH_ALPHA = 0.40f;
     /** Количество глитч-полосок по краям экрана. */
     public static final int GLITCH_BARS = 14;
     /** Сила розовой подсветки по краям экрана (0 = выключить). */
@@ -43,6 +43,14 @@ public final class EpitaphState {
     public static float fade = 0f;
     /** Тик картинки-эффекта: -1 = не показываем. */
     public static int flashTick = -1;
+    /** Момент старта картинки-эффекта (для плавной анимации по времени). */
+    public static long flashStartNanos = 0L;
+
+    /** Запускает картинку-эффект с анимацией. */
+    public static void startFlash() {
+        flashTick = 0;
+        flashStartNanos = System.nanoTime();
+    }
     /** Задержанные пакеты движения (Blink). */
     public static final List<Packet<?>> queue = new ArrayList<>();
 

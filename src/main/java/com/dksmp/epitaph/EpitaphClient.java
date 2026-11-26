@@ -18,6 +18,7 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.Random;
@@ -27,16 +28,31 @@ public class EpitaphClient implements ClientModInitializer {
     private static final Identifier EFFECT_TEXTURE =
             Identifier.of("epitaph", "textures/gui/epitaph_effect.png");
 
+    // Анимация из видео (King Crimson Time Jump): 24 кадра в одной картинке 4 x 6
+    private static final Identifier ANIM_TEXTURE =
+            Identifier.of("epitaph", "textures/gui/time_jump.png");
+    private static final int ANIM_FRAMES = 24;
+    private static final int ANIM_COLS = 4;
+    private static final int ANIM_FRAME_W = 480;
+    private static final int ANIM_FRAME_H = 270;
+    private static final int ANIM_SHEET_W = 1920;
+    private static final int ANIM_SHEET_H = 1620;
+    private static final double ANIM_FPS = 30.0;
+
     private static KeyBinding toggleKey;
+    private static KeyBinding dashKey;
     private static KeyBinding dodgeKey;
 
     @Override
     public void onInitializeClient() {
         EpitaphConfig.load();
 
-        // V: Эпитафия, Shift+V: рывок (меняется в настройках управления, категория King Crimson)
+        // V: Эпитафия. G: рывок. Правый Shift: уворот.
+        // Все кнопки меняются в настройках управления, категория King Crimson.
         toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.epitaph.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_V, "category.epitaph"));
+        dashKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.epitaph.dash", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G, "category.epitaph"));
         // Правый Shift: включить / выключить уворот
         dodgeKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.epitaph.dodge", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category.epitaph"));
@@ -66,13 +82,15 @@ public class EpitaphClient implements ClientModInitializer {
         }
 
         while (toggleKey.wasPressed()) {
-            if (isShiftDown(client)) {
-                dash(client);          // Shift + V: рывок
-            } else if (EpitaphState.active) {
+            if (EpitaphState.active) {
                 stop(client);          // V: телепорт обратно (конец Эпитафии)
             } else {
                 start(client);         // V: старт Эпитафии
             }
+        }
+
+        while (dashKey.wasPressed()) {
+            dash(client);              // G: рывок
         }
 
         while (dodgeKey.wasPressed()) {
@@ -107,16 +125,15 @@ public class EpitaphClient implements ClientModInitializer {
     private static void start(MinecraftClient client) {
         EpitaphState.active = true;
         EpitaphState.ticks = 0;
-        EpitaphState.flashTick = 0;
+        EpitaphState.startFlash();
         EpitaphState.queue.clear();
-        client.getSoundManager().play(
-                PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 0.6f));
+        EpitaphSounds.play(client, EpitaphSounds.EPITAPH);
     }
 
     private static void stop(MinecraftClient client) {
         // Сначала выключаем Blink, потом отправляем всё накопленное по порядку
         EpitaphState.active = false;
-        EpitaphState.flashTick = 0;
+        EpitaphState.startFlash();
         ClientPlayNetworkHandler handler = client.getNetworkHandler();
         if (handler != null) {
             for (Packet<?> packet : EpitaphState.queue) {
@@ -124,19 +141,12 @@ public class EpitaphClient implements ClientModInitializer {
             }
         }
         EpitaphState.queue.clear();
-        client.getSoundManager().play(
-                PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.2f));
-    }
-
-    private static boolean isShiftDown(MinecraftClient client) {
-        long window = client.getWindow().getHandle();
-        return InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_LEFT_SHIFT)
-                || InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+        EpitaphSounds.play(client, EpitaphSounds.EPITAPH);
     }
 
     /**
-     * Рывок: мгновенно переносит тебя вперёд (по направлению взгляда, по горизонтали)
-     * на заданную дальность. Если впереди стена, останавливается перед ней.
+     * Рывок: мгновенно переносит тебя вперёд ТУДА, КУДА ТЫ СМОТРИШЬ (в том числе вверх и вниз)
+     * на заданную дальность. Если на пути преграда, останавливается перед ней.
      * Сервер получает несколько коротких шагов, а не один большой прыжок, поэтому не откатывает.
      */
     private static void dash(MinecraftClient client) {
@@ -144,25 +154,27 @@ public class EpitaphClient implements ClientModInitializer {
         if (player == null || client.world == null) return;
         if (EpitaphState.teleportCooldown > 0) return;
 
-        double rad = Math.toRadians(player.getYaw());
-        double dx = -Math.sin(rad);
-        double dz = Math.cos(rad);
+        Vec3d look = player.getRotationVec(1.0f).normalize();
+        double dx = look.x;
+        double dy = look.y;
+        double dz = look.z;
 
         // Ищем самую дальнюю свободную точку на пути (шаг 0.5 блока)
         Box box = player.getBoundingBox();
         double free = 0.0;
         for (double d = 0.5; d <= EpitaphConfig.teleportDistance + 1e-6; d += 0.5) {
-            if (client.world.isSpaceEmpty(player, box.offset(dx * d, 0.0, dz * d))) {
+            if (client.world.isSpaceEmpty(player, box.offset(dx * d, dy * d, dz * d))) {
                 free = d;
             } else {
                 break;
             }
         }
-        if (free < 1.0) return; // впереди стена вплотную
+        if (free < 1.0) return; // на пути сразу преграда
 
         double sx = player.getX();
         double sy = player.getY();
         double sz = player.getZ();
+        boolean goingUp = dy > 0.05;
 
         // Сообщаем серверу маршрут короткими шагами (не больше 4 блоков за шаг)
         ClientPlayNetworkHandler handler = client.getNetworkHandler();
@@ -171,16 +183,16 @@ public class EpitaphClient implements ClientModInitializer {
             for (int i = 1; i <= steps; i++) {
                 double d = free * i / steps;
                 handler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        sx + dx * d, sy, sz + dz * d, player.isOnGround()));
+                        sx + dx * d, sy + dy * d, sz + dz * d, !goingUp && player.isOnGround()));
             }
         }
-        player.setPosition(sx + dx * free, sy, sz + dz * free);
+        player.setPosition(sx + dx * free, sy + dy * free, sz + dz * free);
+        player.setVelocity(Vec3d.ZERO);
 
-        // Тот же эффект-картинка, но без глитча по краям (глитч только во время Эпитафии)
-        EpitaphState.flashTick = 0;
+        // Картинка-эффект с анимацией, но без глитча по краям (глитч только во время Эпитафии)
+        EpitaphState.startFlash();
         EpitaphState.teleportCooldown = EpitaphState.TELEPORT_COOLDOWN;
-        client.getSoundManager().play(
-                PositionedSoundInstance.master(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1.0f));
+        EpitaphSounds.play(client, EpitaphSounds.DASH);
     }
 
     // ===================== ОТРИСОВКА =====================
@@ -214,6 +226,7 @@ public class EpitaphClient implements ClientModInitializer {
         // (красную обводку сущностей рисует сама игра, см. mixin)
         if (EpitaphState.flashTick >= 0) {
             drawEffectImage(ctx, w, h, EpitaphState.flashTick / (float) EpitaphState.FLASH_TICKS);
+            drawAnimation(ctx, w, h);
         }
     }
 
@@ -259,6 +272,24 @@ public class EpitaphClient implements ClientModInitializer {
         RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
         ctx.drawTexture(EFFECT_TEXTURE, -20 + shake, 0, w + 40, h, 0f, 0f, 512, 288, 512, 288);
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        RenderSystem.disableBlend();
+    }
+
+    /** Анимация "King Crimson Time Jump" (кадры из видео без зелёного фона) поверх картинки-эффекта. */
+    private static void drawAnimation(DrawContext ctx, int w, int h) {
+        double elapsedMs = (System.nanoTime() - EpitaphState.flashStartNanos) / 1_000_000.0;
+        int frame = (int) (elapsedMs / (1000.0 / ANIM_FPS));
+        if (frame < 0 || frame >= ANIM_FRAMES) return;
+
+        int col = frame % ANIM_COLS;
+        int row = frame / ANIM_COLS;
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        ctx.drawTexture(ANIM_TEXTURE, 0, 0, w, h,
+                (float) (col * ANIM_FRAME_W), (float) (row * ANIM_FRAME_H),
+                ANIM_FRAME_W, ANIM_FRAME_H, ANIM_SHEET_W, ANIM_SHEET_H);
         RenderSystem.disableBlend();
     }
 }

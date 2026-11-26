@@ -1,5 +1,6 @@
 {
-  "key.epitaph.toggle": "Epitaph (V) / Dash (Shift+V)",
+  "key.epitaph.toggle": "Epitaph (start / teleport back)",
+  "key.epitaph.dash": "Dash (where you look)",
   "key.epitaph.dodge": "Dodge (on / off)",
   "category.epitaph": "King Crimson"
 }

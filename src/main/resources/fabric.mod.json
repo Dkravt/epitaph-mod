@@ -3,7 +3,7 @@
   "id": "epitaph",
   "version": "${version}",
   "name": "Epitaph (King Crimson)",
-  "description": "King Crimson style Epitaph: Blink-style teleport, red outlines through walls, and a dash on Shift+V.",
+  "description": "King Crimson style Epitaph: Blink-style teleport, red outlines through walls, a dash and a dodge.",
   "authors": ["DK"],
   "license": "All-Rights-Reserved",
   "icon": "assets/epitaph/icon.png",
