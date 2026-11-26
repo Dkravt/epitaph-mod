@@ -3,6 +3,8 @@
   "package": "com.dksmp.epitaph.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "ClientCommonNetworkHandlerMixin"
+    "ClientCommonNetworkHandlerMixin",
+    "MinecraftClientMixin",
+    "EntityMixin"
   ]
 }
