@@ -12,11 +12,16 @@ import java.util.List;
 public final class EpitaphState {
 
     // ================= НАСТРОЙКИ (меняй тут) =================
-    // Дальность рывка, длительность Эпитафии и радиус обводки меняются в Mod Menu (см. EpitaphConfig)
+    // Дальность рывка, длительность Эпитафии, радиус обводки и настройки уворота
+    // меняются в Mod Menu (см. EpitaphConfig)
     /** Пауза между рывками (тики, 20 = 1 секунда). */
     public static final int TELEPORT_COOLDOWN = 10;
-    /** Цвет обводки (RGB). */
+    /** Пауза между уворотами (тики). */
+    public static final int DODGE_COOLDOWN = 10;
+    /** Цвет красной обводки мобов (RGB). */
     public static final int OUTLINE_COLOR = 0xFF2850;
+    /** Цвет розовой обводки вокруг тебя во время уворота (RGB). */
+    public static final int DODGE_COLOR = 0xFF5CE0;
     /** Длительность картинки-эффекта при включении и при телепорте (тики). */
     public static final int FLASH_TICKS = 16;
     /** Максимальная яркость картинки-эффекта (0..1). */
@@ -29,6 +34,7 @@ public final class EpitaphState {
     public static final float DARKNESS = 0.0f;
     // =========================================================
 
+    // --- Эпитафия (Blink) ---
     public static boolean active = false;
     public static int ticks = 0;
     /** Сколько тиков осталось до следующего рывка. */
@@ -40,14 +46,29 @@ public final class EpitaphState {
     /** Задержанные пакеты движения (Blink). */
     public static final List<Packet<?>> queue = new ArrayList<>();
 
-    /** Нужна ли этой сущности красная обводка прямо сейчас. */
+    // --- Уворот ---
+    public static boolean dodgeArmed = false;
+    public static int dodgeTicksLeft = 0;
+    public static int dodgeCharges = 0;
+    public static int dodgeCooldown = 0;
+    public static float dodgeFade = 0f;
+    public static int lastHurtTime = 0;
+
+    /** Нужна ли этой сущности обводка прямо сейчас. */
     public static boolean shouldOutline(Entity entity) {
-        if (!active) return false;
         MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || entity == client.player) return false;
+        if (client.player == null) return false;
+        if (entity == client.player) return dodgeArmed;   // розовая обводка вокруг тебя
+        if (!active) return false;
         if (!(entity instanceof LivingEntity) || entity instanceof ArmorStandEntity) return false;
         double r = EpitaphConfig.outlineRadius;
         return entity.squaredDistanceTo(client.player) <= r * r;
+    }
+
+    /** Цвет обводки: розовый для тебя, красный для остальных. */
+    public static int outlineColor(Entity entity) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return entity == client.player ? DODGE_COLOR : OUTLINE_COLOR;
     }
 
     private EpitaphState() {}

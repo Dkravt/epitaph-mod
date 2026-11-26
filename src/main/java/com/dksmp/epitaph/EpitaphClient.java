@@ -15,6 +15,7 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Box;
 import org.lwjgl.glfw.GLFW;
@@ -27,17 +28,22 @@ public class EpitaphClient implements ClientModInitializer {
             Identifier.of("epitaph", "textures/gui/epitaph_effect.png");
 
     private static KeyBinding toggleKey;
+    private static KeyBinding dodgeKey;
 
     @Override
     public void onInitializeClient() {
         EpitaphConfig.load();
 
-        // Кнопка по умолчанию: V (меняется в настройках управления, категория King Crimson)
+        // V: Эпитафия, Shift+V: рывок (меняется в настройках управления, категория King Crimson)
         toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.epitaph.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_V, "category.epitaph"));
+        // Правый Shift: включить / выключить уворот
+        dodgeKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.epitaph.dodge", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category.epitaph"));
 
         ClientTickEvents.END_CLIENT_TICK.register(EpitaphClient::onTick);
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> onHud(drawContext));
+        EyeRenderer.register();
     }
 
     // ===================== ЛОГИКА =====================
@@ -49,6 +55,9 @@ public class EpitaphClient implements ClientModInitializer {
             EpitaphState.queue.clear();
             EpitaphState.fade = 0f;
             EpitaphState.flashTick = -1;
+            EpitaphState.dodgeArmed = false;
+            EpitaphState.dodgeFade = 0f;
+            EpitaphState.lastHurtTime = 0;
             return;
         }
 
@@ -66,6 +75,11 @@ public class EpitaphClient implements ClientModInitializer {
             }
         }
 
+        while (dodgeKey.wasPressed()) {
+            Dodge.toggle(client);      // Правый Shift: уворот вкл / выкл
+        }
+        Dodge.tick(client);
+
         if (EpitaphState.active) {
             EpitaphState.ticks++;
             if (EpitaphState.ticks >= EpitaphConfig.durationSeconds * 20) {
@@ -74,6 +88,12 @@ public class EpitaphClient implements ClientModInitializer {
             EpitaphState.fade = Math.min(1f, EpitaphState.fade + 0.12f);
         } else {
             EpitaphState.fade = Math.max(0f, EpitaphState.fade - 0.12f);
+        }
+
+        if (EpitaphState.dodgeArmed) {
+            EpitaphState.dodgeFade = Math.min(1f, EpitaphState.dodgeFade + 0.12f);
+        } else {
+            EpitaphState.dodgeFade = Math.max(0f, EpitaphState.dodgeFade - 0.12f);
         }
 
         if (EpitaphState.flashTick >= 0) {
@@ -172,26 +192,33 @@ public class EpitaphClient implements ClientModInitializer {
         int w = ctx.getScaledWindowWidth();
         int h = ctx.getScaledWindowHeight();
 
-        // 1) Лёгкий глитч по краям экрана (и затемнение, если включено в настройках)
-        if (EpitaphState.fade > 0f) {
-            if (EpitaphState.DARKNESS > 0f) {
+        // 1) Лёгкий глитч по краям экрана: во время Эпитафии (сильнее) и во время уворота (слабее)
+        float strength = Math.max(EpitaphState.fade, EpitaphState.dodgeFade * 0.7f);
+        if (strength > 0f) {
+            if (EpitaphState.DARKNESS > 0f && EpitaphState.fade > 0f) {
                 int a = (int) (EpitaphState.fade * EpitaphState.DARKNESS * 255f);
                 ctx.fill(0, 0, w, h, a << 24);
             }
-            drawEdgeGlitch(ctx, w, h);
+            drawEdgeGlitch(ctx, w, h, strength);
         }
 
-        // 2) Картинка-эффект (космос и розовые полосы) при включении и при телепорте
-        // (красная обводка сущностей рисуется самой игрой, см. mixin)
+        // 2) Счётчик уворота
+        if (EpitaphState.dodgeArmed) {
+            int seconds = (EpitaphState.dodgeTicksLeft + 19) / 20;
+            ctx.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal("Уворот: " + EpitaphState.dodgeCharges + "  |  " + seconds + " с"),
+                    w / 2, h - 62, 0xFF9AF0);
+        }
+
+        // 3) Картинка-эффект (космос и розовые полосы) при включении, телепорте, рывке и увороте
+        // (красную обводку сущностей рисует сама игра, см. mixin)
         if (EpitaphState.flashTick >= 0) {
             drawEffectImage(ctx, w, h, EpitaphState.flashTick / (float) EpitaphState.FLASH_TICKS);
         }
     }
 
     /** Слабый глитч по краям: розовая подсветка и короткие мерцающие полоски. */
-    private static void drawEdgeGlitch(DrawContext ctx, int w, int h) {
-        float strength = EpitaphState.fade;
-
+    private static void drawEdgeGlitch(DrawContext ctx, int w, int h, float strength) {
         if (EpitaphState.EDGE_TINT > 0f) {
             int strips = 8;
             int stripW = Math.max(2, w / 80);

@@ -21,7 +21,7 @@ public class EpitaphConfigScreen extends Screen {
     @Override
     protected void init() {
         int x = this.width / 2 - 100;
-        int y = this.height / 4;
+        int y = this.height / 6;
 
         this.addDrawableChild(new ConfigSlider(x, y, 200, "Дальность рывка (блоков)",
                 1, 15, EpitaphConfig.teleportDistance, v -> EpitaphConfig.teleportDistance = v));
@@ -29,6 +29,10 @@ public class EpitaphConfigScreen extends Screen {
                 1, 10, EpitaphConfig.durationSeconds, v -> EpitaphConfig.durationSeconds = v));
         this.addDrawableChild(new ConfigSlider(x, y + 56, 200, "Радиус обводки (блоков)",
                 8, 64, EpitaphConfig.outlineRadius, v -> EpitaphConfig.outlineRadius = v));
+        this.addDrawableChild(new ConfigSlider(x, y + 84, 200, "Длительность уворота (сек)",
+                1, 10, EpitaphConfig.dodgeDurationSeconds, v -> EpitaphConfig.dodgeDurationSeconds = v));
+        this.addDrawableChild(new ConfigSlider(x, y + 112, 200, "Количество уворотов",
+                1, 50, EpitaphConfig.dodgeCount, v -> EpitaphConfig.dodgeCount = v));
 
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Готово"), button -> this.close())
                 .dimensions(x, this.height - 40, 200, 20)

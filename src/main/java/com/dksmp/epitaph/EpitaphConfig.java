@@ -17,6 +17,10 @@ public final class EpitaphConfig {
     public static int durationSeconds = 6;
     /** Радиус красной обводки в блоках (8..64). */
     public static int outlineRadius = 32;
+    /** Сколько секунд работает уворот после включения (1..10). */
+    public static int dodgeDurationSeconds = 5;
+    /** Сколько раз можно увернуться за одно включение (1..50). */
+    public static int dodgeCount = 3;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -24,6 +28,8 @@ public final class EpitaphConfig {
         int teleportDistance = 10;
         int durationSeconds = 6;
         int outlineRadius = 32;
+        int dodgeDurationSeconds = 5;
+        int dodgeCount = 3;
     }
 
     private static Path path() {
@@ -42,6 +48,8 @@ public final class EpitaphConfig {
                 teleportDistance = clamp(d.teleportDistance, 1, 15);
                 durationSeconds = clamp(d.durationSeconds, 1, 10);
                 outlineRadius = clamp(d.outlineRadius, 8, 64);
+                dodgeDurationSeconds = clamp(d.dodgeDurationSeconds, 1, 10);
+                dodgeCount = clamp(d.dodgeCount, 1, 50);
             }
         } catch (Exception e) {
             // Битый файл настроек: остаёмся на значениях по умолчанию
@@ -53,6 +61,8 @@ public final class EpitaphConfig {
         d.teleportDistance = teleportDistance;
         d.durationSeconds = durationSeconds;
         d.outlineRadius = outlineRadius;
+        d.dodgeDurationSeconds = dodgeDurationSeconds;
+        d.dodgeCount = dodgeCount;
         try {
             Files.writeString(path(), GSON.toJson(d));
         } catch (IOException e) {
