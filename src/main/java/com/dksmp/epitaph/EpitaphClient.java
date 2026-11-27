@@ -39,6 +39,18 @@ public class EpitaphClient implements ClientModInitializer {
     private static final int ANIM_SHEET_H = 1620;
     private static final double ANIM_FPS = 30.0;
 
+    // Анимация "King Crimson Time Skip" для главной способности (Эпитафия): 22 кадра, сетка 4 x 6,
+    // чуть замедлена (20 кадров в секунду вместо 25 в оригинале)
+    private static final Identifier SKIP_TEXTURE =
+            Identifier.of("epitaph", "textures/gui/time_skip.png");
+    private static final int SKIP_FRAMES = 22;
+    private static final int SKIP_COLS = 4;
+    private static final int SKIP_FRAME_W = 320;
+    private static final int SKIP_FRAME_H = 180;
+    private static final int SKIP_SHEET_W = 1280;
+    private static final int SKIP_SHEET_H = 1080;
+    private static final double SKIP_FPS = 20.0;
+
     private static KeyBinding toggleKey;
     private static KeyBinding dashKey;
     private static KeyBinding dodgeKey;
@@ -116,7 +128,7 @@ public class EpitaphClient implements ClientModInitializer {
 
         if (EpitaphState.flashTick >= 0) {
             EpitaphState.flashTick++;
-            if (EpitaphState.flashTick >= EpitaphState.FLASH_TICKS) {
+            if (EpitaphState.flashTick >= EpitaphState.flashDurationTicks()) {
                 EpitaphState.flashTick = -1;
             }
         }
@@ -125,7 +137,7 @@ public class EpitaphClient implements ClientModInitializer {
     private static void start(MinecraftClient client) {
         EpitaphState.active = true;
         EpitaphState.ticks = 0;
-        EpitaphState.startFlash();
+        EpitaphState.startFlash(1);
         EpitaphState.queue.clear();
         EpitaphSounds.play(client, EpitaphSounds.EPITAPH);
     }
@@ -133,7 +145,7 @@ public class EpitaphClient implements ClientModInitializer {
     private static void stop(MinecraftClient client) {
         // Сначала выключаем Blink, потом отправляем всё накопленное по порядку
         EpitaphState.active = false;
-        EpitaphState.startFlash();
+        EpitaphState.startFlash(1);
         ClientPlayNetworkHandler handler = client.getNetworkHandler();
         if (handler != null) {
             for (Packet<?> packet : EpitaphState.queue) {
@@ -236,7 +248,7 @@ public class EpitaphClient implements ClientModInitializer {
         // 3) Картинка-эффект (космос и розовые полосы) при включении, телепорте, рывке и увороте
         // (красную обводку сущностей рисует сама игра, см. mixin)
         if (EpitaphState.flashTick >= 0) {
-            drawEffectImage(ctx, w, h, EpitaphState.flashTick / (float) EpitaphState.FLASH_TICKS);
+            drawEffectImage(ctx, w, h, EpitaphState.flashTick / (float) EpitaphState.flashDurationTicks());
             drawAnimation(ctx, w, h);
         }
     }
@@ -286,21 +298,33 @@ public class EpitaphClient implements ClientModInitializer {
         RenderSystem.disableBlend();
     }
 
-    /** Анимация "King Crimson Time Jump" (кадры из видео без зелёного фона) поверх картинки-эффекта. */
+    /** Анимация поверх картинки-эффекта: Time Skip для Эпитафии, Time Jump для рывка и уворота. */
     private static void drawAnimation(DrawContext ctx, int w, int h) {
-        double elapsedMs = (System.nanoTime() - EpitaphState.flashStartNanos) / 1_000_000.0;
-        int frame = (int) (elapsedMs / (1000.0 / ANIM_FPS));
-        if (frame < 0 || frame >= ANIM_FRAMES) return;
+        if (EpitaphState.flashVariant == 1) {
+            drawSheet(ctx, w, h, SKIP_TEXTURE, SKIP_FRAMES, SKIP_COLS,
+                    SKIP_FRAME_W, SKIP_FRAME_H, SKIP_SHEET_W, SKIP_SHEET_H, SKIP_FPS);
+        } else {
+            drawSheet(ctx, w, h, ANIM_TEXTURE, ANIM_FRAMES, ANIM_COLS,
+                    ANIM_FRAME_W, ANIM_FRAME_H, ANIM_SHEET_W, ANIM_SHEET_H, ANIM_FPS);
+        }
+    }
 
-        int col = frame % ANIM_COLS;
-        int row = frame / ANIM_COLS;
+    /** Рисует нужный по времени кадр анимации (все кадры лежат в одной картинке-сетке). */
+    private static void drawSheet(DrawContext ctx, int w, int h, Identifier texture, int frames, int cols,
+                                  int frameW, int frameH, int sheetW, int sheetH, double fps) {
+        double elapsedMs = (System.nanoTime() - EpitaphState.flashStartNanos) / 1_000_000.0;
+        int frame = (int) (elapsedMs / (1000.0 / fps));
+        if (frame < 0 || frame >= frames) return;
+
+        int col = frame % cols;
+        int row = frame / cols;
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        ctx.drawTexture(ANIM_TEXTURE, 0, 0, w, h,
-                (float) (col * ANIM_FRAME_W), (float) (row * ANIM_FRAME_H),
-                ANIM_FRAME_W, ANIM_FRAME_H, ANIM_SHEET_W, ANIM_SHEET_H);
+        ctx.drawTexture(texture, 0, 0, w, h,
+                (float) (col * frameW), (float) (row * frameH),
+                frameW, frameH, sheetW, sheetH);
         RenderSystem.disableBlend();
     }
 }

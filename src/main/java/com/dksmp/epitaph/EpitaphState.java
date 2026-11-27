@@ -22,8 +22,10 @@ public final class EpitaphState {
     public static final int OUTLINE_COLOR = 0xFF2850;
     /** Цвет розовой обводки вокруг тебя во время уворота (RGB). */
     public static final int DODGE_COLOR = 0xFF5CE0;
-    /** Длительность картинки-эффекта при включении и при телепорте (тики). */
+    /** Длительность эффекта рывка и уворота (тики, 20 = 1 секунда). */
     public static final int FLASH_TICKS = 16;
+    /** Длительность эффекта главной способности Эпитафии, анимация чуть замедлена (тики). */
+    public static final int FLASH_TICKS_SKIP = 24;
     /** Прозрачность картинки с космосом (0 = невидна, 1 = полностью). Анимация поверх неё не зависит от этого. */
     public static final float FLASH_ALPHA = 0.40f;
     /** Количество глитч-полосок по краям экрана. */
@@ -45,11 +47,24 @@ public final class EpitaphState {
     public static int flashTick = -1;
     /** Момент старта картинки-эффекта (для плавной анимации по времени). */
     public static long flashStartNanos = 0L;
+    /** Какая анимация сейчас идёт: 0 = Time Jump (рывок, уворот), 1 = Time Skip (Эпитафия). */
+    public static int flashVariant = 0;
 
-    /** Запускает картинку-эффект с анимацией. */
+    /** Запускает эффект с анимацией Time Jump (рывок, уворот). */
     public static void startFlash() {
+        startFlash(0);
+    }
+
+    /** Запускает эффект с выбранной анимацией. */
+    public static void startFlash(int variant) {
+        flashVariant = variant;
         flashTick = 0;
         flashStartNanos = System.nanoTime();
+    }
+
+    /** Сколько тиков длится текущий эффект. */
+    public static int flashDurationTicks() {
+        return flashVariant == 1 ? FLASH_TICKS_SKIP : FLASH_TICKS;
     }
     /** Задержанные пакеты движения (Blink). */
     public static final List<Packet<?>> queue = new ArrayList<>();
